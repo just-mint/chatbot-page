@@ -27,7 +27,7 @@ pip install -r requirements.txt
 
 ## 🛠️ Customization
 
-Edit `app.py` to:
+Edit `*.py` to:
 
 * Change UI elements (titles, avatars, layout)
 * Integrate with AI APIs (e.g., OpenAI, Hugging Face)
