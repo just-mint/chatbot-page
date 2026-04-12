@@ -24,13 +24,6 @@ cd streamlit-chat
 pip install -r requirements.txt
 ```
 
-## ▶️ Run
-
-```bash
-streamlit run app.py
-```
-
-Then open the local URL shown in the terminal.
 
 ## 🛠️ Customization
 
