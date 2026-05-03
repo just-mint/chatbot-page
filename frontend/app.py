@@ -1,73 +1,68 @@
-import streamlit as st
-from collections import deque
 import requests
+import streamlit as st
 
-from api_client import signup, login, google_login, get_messages, send_chat
+from api_client import signup, login, google_login, get_notes, create_note, update_note, delete_note
 
-st.set_page_config(page_title="Mika Frontend", page_icon="💬")
+st.set_page_config(page_title="Notes App", page_icon="📝")
 
-WELCOME = {"role": "assistant", "content": "Xin chào 👋! Tôi là Mika. Tôi có thể giúp gì cho bạn?"}
-
+# ── Session state ─────────────────────────────────────────────────────────────
 if "user" not in st.session_state:
     st.session_state.user = None
-
-if "messages" not in st.session_state:
-    st.session_state.messages = deque([WELCOME], maxlen=8)
-
+if "notes" not in st.session_state:
+    st.session_state.notes = []
 if "show_signup" not in st.session_state:
     st.session_state.show_signup = False
+if "editing_note" not in st.session_state:
+    st.session_state.editing_note = None  # note id being edited
 
-if "show_login" not in st.session_state:
-    st.session_state.show_login = True
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-def load_history():
+def load_notes():
     if not st.session_state.user:
         return
     try:
-        msgs = get_messages(st.session_state.user["idToken"], limit=8)
-        st.session_state.messages = deque(msgs, maxlen=8)
+        st.session_state.notes = get_notes(st.session_state.user["idToken"])
     except Exception:
-        st.session_state.messages = deque([WELCOME], maxlen=8)
+        st.session_state.notes = []
 
 
-def clear_google_query_params():
+def clear_google_params():
     try:
         st.query_params.clear()
     except Exception:
         pass
 
 
-def handle_google_login_callback():
+# ── Google OAuth callback ─────────────────────────────────────────────────────
+
+def handle_google_callback():
     if st.session_state.user:
         return
-
     params = st.query_params
     raw_token = params.get("id_token")
-
     if not raw_token:
         return
-
     id_token = raw_token[0] if isinstance(raw_token, list) else raw_token
-
     try:
         user = google_login(id_token)
         st.session_state.user = user
-        load_history()
-        clear_google_query_params()
+        load_notes()
+        clear_google_params()
         st.success("Đăng nhập Google thành công")
         st.rerun()
     except requests.HTTPError as e:
         st.error(f"Đăng nhập Google thất bại: {e}")
-        clear_google_query_params()
+        clear_google_params()
     except Exception as e:
         st.error(f"Lỗi xử lý Google login: {e}")
-        clear_google_query_params()
+        clear_google_params()
 
+
+# ── Auth forms ────────────────────────────────────────────────────────────────
 
 def login_form():
     st.subheader("Đăng nhập")
-
     with st.form("login_form"):
         email = st.text_input("Email")
         password = st.text_input("Mật khẩu", type="password")
@@ -76,49 +71,32 @@ def login_form():
 
     if goto_signup:
         st.session_state.show_signup = True
-        st.session_state.show_login = False
         st.rerun()
 
     if submitted:
         try:
             user = login(email, password)
             st.session_state.user = user
-            load_history()
+            load_notes()
             st.success("Đăng nhập thành công")
             st.rerun()
         except requests.HTTPError as e:
             st.error(f"Đăng nhập thất bại: {e}")
         except Exception as e:
-            st.error(f"Lỗi đăng nhập: {e}")
+            st.error(f"Lỗi: {e}")
 
     st.markdown("### Hoặc")
-
-    google_login_url = dict(st.secrets["google-login"])["google-url"]
-
+    google_login_url = dict(st.secrets["google-login"]).get("google-url", "")
     if google_login_url:
         st.markdown(
-        f'''
-        <a href="{google_login_url}" target="_self" style="
-            display: inline-block;
-            width: 100%;
-            text-align: center;
-            padding: 0.6rem 1rem;
-            background-color: white;
-            color: black;
-            text-decoration: none;
-            border-radius: 0.5rem;
-            border: 1px solid #ddd;
-            font-weight: 600;
-        ">
-            Đăng nhập với Google
-        </a>
-        ''',
-        unsafe_allow_html=True,
-    )
-    else:
-        st.info(
-            "Chưa cấu hình Google-login trong secrets. "
-            "Hãy thêm URL đăng nhập Google để dùng tính năng này."
+            f'''<a href="{google_login_url}" target="_self" style="
+                display:inline-block;width:100%;text-align:center;
+                padding:0.6rem 1rem;background-color:white;color:black;
+                text-decoration:none;border-radius:0.5rem;
+                border:1px solid #ddd;font-weight:600;">
+                Đăng nhập với Google
+            </a>''',
+            unsafe_allow_html=True,
         )
 
 
@@ -132,7 +110,6 @@ def signup_form():
 
     if goto_login:
         st.session_state.show_signup = False
-        st.session_state.show_login = True
         st.rerun()
 
     if submitted:
@@ -140,25 +117,31 @@ def signup_form():
             signup(email, password)
             st.success("Tạo tài khoản thành công, hãy đăng nhập")
             st.session_state.show_signup = False
-            st.session_state.show_login = True
             st.rerun()
         except requests.HTTPError as e:
             st.error(f"Đăng ký thất bại: {e}")
         except Exception as e:
-            st.error(f"Lỗi đăng ký: {e}")
+            st.error(f"Lỗi: {e}")
 
 
-handle_google_login_callback()
+# ── Main ──────────────────────────────────────────────────────────────────────
 
-st.title("Mika Chat")
+handle_google_callback()
 
+st.title("📝 Notes App")
+
+# Header: user info & logout
 if st.session_state.user:
-    st.success(f"Đang đăng nhập: {st.session_state.user['email']}")
-    if st.button("Đăng xuất"):
-        st.session_state.user = None
-        st.session_state.messages = deque([WELCOME], maxlen=8)
-        clear_google_query_params()
-        st.rerun()
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.success(f"Đang đăng nhập: {st.session_state.user['email']}")
+    with col2:
+        if st.button("Đăng xuất"):
+            st.session_state.user = None
+            st.session_state.notes = []
+            st.session_state.editing_note = None
+            clear_google_params()
+            st.rerun()
 else:
     if st.session_state.show_signup:
         signup_form()
@@ -167,22 +150,82 @@ else:
 
 st.divider()
 
+# ── Notes UI (only when logged in) ───────────────────────────────────────────
 if st.session_state.user:
-    for msg in list(st.session_state.messages):
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+    token = st.session_state.user["idToken"]
 
-    prompt = st.chat_input("Nhập tin nhắn...")
-    if prompt:
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    # ── Create new note ───────────────────────────────────────────────────────
+    st.subheader("✏️ Tạo ghi chú mới")
+    with st.form("create_note_form", clear_on_submit=True):
+        new_title = st.text_input("Tiêu đề")
+        new_content = st.text_area("Nội dung", height=120)
+        create_btn = st.form_submit_button("➕ Thêm ghi chú")
 
-        try:
-            res = send_chat(st.session_state.user["idToken"], prompt)
-            reply = res["reply"]
-        except Exception as e:
-            reply = f"Lỗi backend: {e}"
+    if create_btn:
+        if not new_title.strip():
+            st.warning("Vui lòng nhập tiêu đề.")
+        else:
+            try:
+                create_note(token, new_title.strip(), new_content.strip())
+                st.success("Đã thêm ghi chú!")
+                load_notes()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Lỗi: {e}")
 
-        st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.divider()
+
+    # ── List notes ────────────────────────────────────────────────────────────
+    st.subheader("📋 Danh sách ghi chú")
+
+    if st.button("🔄 Tải lại"):
+        load_notes()
         st.rerun()
+
+    if not st.session_state.notes:
+        st.info("Chưa có ghi chú nào. Hãy tạo ghi chú đầu tiên!")
+    else:
+        for note in st.session_state.notes:
+            note_id = note["id"]
+            with st.expander(f"📌 {note['title']}", expanded=False):
+                # Edit mode
+                if st.session_state.editing_note == note_id:
+                    with st.form(f"edit_{note_id}"):
+                        edit_title = st.text_input("Tiêu đề", value=note["title"])
+                        edit_content = st.text_area("Nội dung", value=note["content"], height=150)
+                        col_save, col_cancel = st.columns(2)
+                        save_btn = col_save.form_submit_button("💾 Lưu")
+                        cancel_btn = col_cancel.form_submit_button("❌ Hủy")
+
+                    if save_btn:
+                        try:
+                            update_note(token, note_id, edit_title.strip(), edit_content.strip())
+                            st.success("Đã cập nhật!")
+                            st.session_state.editing_note = None
+                            load_notes()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Lỗi: {e}")
+
+                    if cancel_btn:
+                        st.session_state.editing_note = None
+                        st.rerun()
+
+                # View mode
+                else:
+                    st.markdown(note["content"] if note["content"] else "_Không có nội dung_")
+                    if note.get("created_at"):
+                        st.caption(f"🕐 {note['created_at'][:19].replace('T', ' ')}")
+
+                    col_edit, col_del = st.columns([1, 1])
+                    if col_edit.button("✏️ Sửa", key=f"edit_btn_{note_id}"):
+                        st.session_state.editing_note = note_id
+                        st.rerun()
+                    if col_del.button("🗑️ Xóa", key=f"del_btn_{note_id}"):
+                        try:
+                            delete_note(token, note_id)
+                            st.success("Đã xóa ghi chú!")
+                            load_notes()
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Lỗi: {e}")
