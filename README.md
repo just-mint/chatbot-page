@@ -18,3 +18,5 @@ python -m uvicorn backend.app.main:app --reload --port 8000
 streamlit run frontend.app.py
 ```
 ## 4. Video demo
+https://github.com/user-attachments/assets/1ca0c72b-db67-4940-aacd-ad33e6bfa488
+
